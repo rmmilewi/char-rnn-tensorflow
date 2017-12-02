@@ -9,7 +9,7 @@ class Model():
 	def __init__(self, args, training=True):
 		self.args = args
 		if not training:
-			args.batch_size = 1
+			args.batch_size = 10 #RMM TMP, was 1
 			args.seq_length = 1
 
 		if args.model == 'rnn':
@@ -85,9 +85,65 @@ class Model():
 		tf.summary.histogram('logits', self.logits)
 		tf.summary.histogram('loss', loss)
 		tf.summary.scalar('train_loss', self.cost)
+		
+		
+	def sample_montecarlo(self, sess, chars, vocab, num=200, prime='|', sampling_type=1,temperature=1.0,depth=5,width=10):
+		state = sess.run(self.cell.zero_state(width, tf.float32))
+		print(len(state))
+		for char in prime[:-1]:
+			x = np.zeros((width, 1))
+			x.fill(vocab[char])
+			feed = {self.input_data: x, self.initial_state: state}
+			[state] = sess.run([self.final_state], feed)
+			
+		def weighted_pick(weights):
+			pick = tf.multinomial(weights,1).eval()
+			return pick
+			
+		def softmax(x):
+			"""Compute softmax values for each sets of scores in x."""
+			return np.exp(x) / np.sum(np.exp(x), axis=0)		
+			
+		#char = np.zeros((width,1, 1))
+		#char.fill(vocab[prime[-1]]) #fix, not quite
+		char = vocab[prime[-1]]
+		for n in range(num):
+			running_probs = np.ones((width, 1))
+			nextchars = None
+			nextStates = None
+			x = np.zeros((width, 1))
+			x.fill(char)
+			for d in range(depth):
+				feed = {self.input_data: x, self.initial_state: state}
+				[probs,logits,state] = sess.run([self.probs, self.logits,self.final_state], feed)
+				p = logits
+				p = p / temperature #scale by temperature
+				p = softmax(p)
+				pick = weighted_pick(p)
+				pickprobs = np.zeros((width,1))
+				for i in range(width):
+					pickprobs[i][0] = p[i][pick[i][0]]
+				running_probs *= pickprobs
+				if nextchars is None:
+					nextchars = pick
+				if nextStates is None:
+					nextStates = state
+				x = pick
+			bestIndex = np.argmax(running_probs)
+			char = nextchars[bestIndex][0] #vocab[nextchars[bestIndex][0]]
+			print(chars[char],end='')
+			#print('\n HEY',len(nextStates[0].shape))
+			#print(len(nextStates))
+			bestState = nextStates[bestIndex] #not quite working, need to figure out LSTMStateTuple, internals.
+			state = np.tile(bestState, (width, 1))
+			
+			
+			
+				
 
 	def sample(self, sess, chars, vocab, num=200, prime='|', sampling_type=1,temperature=1.0):
 		state = sess.run(self.cell.zero_state(1, tf.float32))
+		
 		for char in prime[:-1]:
 			x = np.zeros((1, 1))
 			x[0, 0] = vocab[char]
@@ -125,7 +181,7 @@ class Model():
 				sample = weighted_pick(p)
 
 			pred = chars[sample]
-			print(pred,end='') #RMM
+			print(pred,end='')
 			ret += pred
 			char = pred
 		#return ret
