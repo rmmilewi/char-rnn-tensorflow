@@ -1,7 +1,6 @@
 import tensorflow as tf
 from tensorflow.contrib import rnn
 from tensorflow.contrib import legacy_seq2seq
-from tensorflow.contrib.distributions import Multinomial
 import numpy as np
 
 
@@ -87,9 +86,10 @@ class Model():
 		tf.summary.scalar('train_loss', self.cost)
 		
 		
-	def sample_montecarlo(self, sess, chars, vocab, num=200, prime='|', sampling_type=1,temperature=1.0,depth=5,width=10):
-		state = sess.run(self.cell.zero_state(width, tf.float32))
-		print(len(state))
+	def sample_montecarlo(self, sess, chars, vocab, num=200, prime='|', sampling_type=1,temperature=1.0,depth=50,width=10):
+		state = sess.run(self.cell.zero_state(width, tf.float32)) 
+		
+		#Prime the network with the starting text.
 		for char in prime[:-1]:
 			x = np.zeros((width, 1))
 			x.fill(vocab[char])
@@ -99,10 +99,30 @@ class Model():
 		def weighted_pick(weights):
 			pick = tf.multinomial(weights,1).eval()
 			return pick
+			#picks = []
+			#for run in weights:
+			#	t = np.cumsum(run)
+			#	s = np.sum(run)
+			#	pck = int(np.searchsorted(t, np.random.rand(1)*s))
+			#	picks.append([pck])
+			#picks = np.array(picks)
+			#return picks
 			
 		def softmax(x):
 			"""Compute softmax values for each sets of scores in x."""
-			return np.exp(x) / np.sum(np.exp(x), axis=0)		
+			x_e = np.exp(x)
+			return x_e / np.sum(x_e, axis=0)
+
+		#This sets the current state to be the state of the best performer in the batch.
+		def cloneBestState(currentState,bestIndex):
+			nState = []
+			for layer in currentState:
+				c_best = layer.c[bestIndex]
+				c = np.tile(c_best, (layer.c.shape[0], 1))
+				h_best = layer.h[bestIndex]
+				h = np.tile(h_best, (layer.h.shape[0], 1))
+				nState.append(rnn.LSTMStateTuple(c,h))
+			return nState
 			
 		#char = np.zeros((width,1, 1))
 		#char.fill(vocab[prime[-1]]) #fix, not quite
@@ -120,6 +140,7 @@ class Model():
 				p = p / temperature #scale by temperature
 				p = softmax(p)
 				pick = weighted_pick(p)
+				print(chars[pick[0][0]],end='') #TMP
 				pickprobs = np.zeros((width,1))
 				for i in range(width):
 					pickprobs[i][0] = p[i][pick[i][0]]
@@ -127,15 +148,12 @@ class Model():
 				if nextchars is None:
 					nextchars = pick
 				if nextStates is None:
-					nextStates = state
+					nextStates = list(state)
 				x = pick
 			bestIndex = np.argmax(running_probs)
 			char = nextchars[bestIndex][0] #vocab[nextchars[bestIndex][0]]
 			print(chars[char],end='')
-			#print('\n HEY',len(nextStates[0].shape))
-			#print(len(nextStates))
-			bestState = nextStates[bestIndex] #not quite working, need to figure out LSTMStateTuple, internals.
-			state = np.tile(bestState, (width, 1))
+			state = cloneBestState(nextStates,bestIndex) 
 			
 			
 			
