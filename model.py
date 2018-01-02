@@ -97,21 +97,33 @@ class Model():
 			[state] = sess.run([self.final_state], feed)
 			
 		def weighted_pick(weights):
-			pick = tf.multinomial(weights,1).eval()
-			return pick
-			#picks = []
-			#for run in weights:
-			#	t = np.cumsum(run)
-			#	s = np.sum(run)
-			#	pck = int(np.searchsorted(t, np.random.rand(1)*s))
-			#	picks.append([pck])
-			#picks = np.array(picks)
-			#return picks
+			#pick = tf.multinomial(weights,1).eval()
+			#return pick
+			picks = []
+			for run in weights:
+				t = np.cumsum(run)
+				s = np.sum(run)
+				pck = int(np.searchsorted(t, np.random.rand(1)*s))
+				picks.append([pck])
+			picks = np.array(picks)
+			return picks
 			
-		def softmax(x):
-			"""Compute softmax values for each sets of scores in x."""
-			x_e = np.exp(x)
-			return x_e / np.sum(x_e, axis=0)
+		#def softmax(x):
+		#	"""Compute softmax values for each sets of scores in x."""
+		#	x_e = np.exp(x)
+		#	return x_e / np.sum(x_e, axis=0)
+		
+		def softmax(z):
+			if len(z.shape) == 2:
+				s = np.max(z, axis=1)
+				s = s[:, np.newaxis] # necessary step to do broadcasting
+				e_x = np.exp(z - s)
+				div = np.sum(e_x, axis=1)
+				div = div[:, np.newaxis] # dito
+				return e_x / div
+			else:
+				x_e = np.exp(x)
+				return x_e / np.sum(x_e, axis=0)
 
 		#This sets the current state to be the state of the best performer in the batch.
 		def cloneBestState(currentState,bestIndex):
@@ -140,7 +152,6 @@ class Model():
 				p = p / temperature #scale by temperature
 				p = softmax(p)
 				pick = weighted_pick(p)
-				print(chars[pick[0][0]],end='') #TMP
 				pickprobs = np.zeros((width,1))
 				for i in range(width):
 					pickprobs[i][0] = p[i][pick[i][0]]
@@ -150,7 +161,8 @@ class Model():
 				if nextStates is None:
 					nextStates = list(state)
 				x = pick
-			bestIndex = np.argmax(running_probs)
+			bestIndex = np.argmin(running_probs)
+			#print("best: ",running_probs[bestIndex][0])
 			char = nextchars[bestIndex][0] #vocab[nextchars[bestIndex][0]]
 			print(chars[char],end='')
 			state = cloneBestState(nextStates,bestIndex) 
